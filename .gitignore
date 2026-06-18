@@ -1,0 +1,22 @@
+# Secrets — never commit
+.env
+backend/.env
+frontend/.env
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/_uvicorn*.log
+backend/_smoke_report.md
+
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/

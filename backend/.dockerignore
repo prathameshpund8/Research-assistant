@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+_uvicorn*.log
+_smoke_report.md
+.pytest_cache/

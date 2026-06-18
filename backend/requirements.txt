@@ -1,0 +1,20 @@
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sse-starlette==2.2.1
+
+# --- Config / validation ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# --- LLM + agent orchestration ---
+langgraph==0.2.61
+langchain-core>=0.3.29,<0.4
+langchain-groq==0.2.4
+
+# --- Web search ---
+tavily-python==0.5.0
+
+# --- HTTP client (used by Tavily / health checks) ---
+httpx==0.28.1
