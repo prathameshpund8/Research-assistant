@@ -1,0 +1,34 @@
+# ===========================================================================
+# Autonomous Research Assistant — run backend + frontend together.
+#
+#   1. cp .env.example .env   (then add your GROQ_API_KEY / TAVILY_API_KEY)
+#   2. docker compose up --build
+#   3. open http://localhost:4200
+# ===========================================================================
+
+services:
+  backend:
+    build: ./backend
+    container_name: research-backend
+    # Secrets and config come from the .env file — never baked into the image.
+    # Marked optional so the stack still boots (in mock mode) before you add keys.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Inside the compose network the frontend proxies same-origin, so CORS is
+      # not strictly required, but we keep dev origins allowed for convenience.
+      CORS_ORIGINS: "http://localhost:4200,http://127.0.0.1:4200"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: research-frontend
+    depends_on:
+      - backend
+    ports:
+      # Host 4200 -> nginx :80. nginx proxies /api/* to the backend service.
+      - "4200:80"
+    restart: unless-stopped
