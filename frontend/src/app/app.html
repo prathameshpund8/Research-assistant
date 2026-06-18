@@ -1,0 +1,45 @@
+<div class="page">
+  <header class="hero">
+    <h1>🔎 Autonomous Research Assistant</h1>
+    <p class="tagline">
+      A multi-agent system that plans, searches, summarizes, fact-checks, and writes a cited
+      report — watch each agent work in real time.
+    </p>
+  </header>
+
+  <main class="container">
+    <app-research-input [running]="running" (research)="onResearch($event)"></app-research-input>
+
+    <div class="error" *ngIf="errorMessage">
+      <strong>⚠ </strong>{{ errorMessage }}
+    </div>
+
+    <section class="workspace" *ngIf="hasStarted">
+      <div class="left">
+        <h2 class="section-title">
+          Agent activity
+          <span class="q" *ngIf="query">— "{{ query }}"</span>
+        </h2>
+        <app-agent-timeline [items]="timeline"></app-agent-timeline>
+
+        <ng-container *ngIf="result && result.status === 'completed'">
+          <h2 class="section-title">Report</h2>
+          <app-report-view [result]="result"></app-report-view>
+        </ng-container>
+      </div>
+
+      <aside class="right">
+        <app-source-list [sources]="result?.sources || []"></app-source-list>
+      </aside>
+    </section>
+
+    <section class="placeholder" *ngIf="!hasStarted">
+      <p>Enter a topic above to begin. No API keys? The app still runs using a built-in mock
+        search so you can see the full agent pipeline.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>FastAPI · LangGraph · Groq · Angular</span>
+  </footer>
+</div>
