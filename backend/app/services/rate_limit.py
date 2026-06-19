@@ -53,34 +53,57 @@ def _parse_retry_seconds(message: str) -> float | None:
 
 
 def invoke_with_retry(llm, messages):
-    """Invoke ``llm`` with throttling + 429 backoff. Returns the model message."""
-    settings = get_settings()
-    attempts = settings.llm_max_retries + 1
+    """Invoke ``llm`` with throttling, 429 backoff, and multi-key rotation.
 
-    for attempt in range(attempts):
+    - Per-minute (TPM/RPM) limits ⇒ short suggested wait ⇒ back off and retry.
+    - Per-day (TPD) limits ⇒ huge suggested wait ⇒ rotate to the next API key
+      (if configured) and retry immediately; only give up once every key is
+      exhausted.
+
+    ``llm`` may be a plain client (with ``.invoke``) or a rotating wrapper
+    (with ``.current_client()``); both are supported.
+    """
+    from app.services.llm import rotate_key  # local import avoids a cycle
+
+    settings = get_settings()
+    max_backoff_retries = settings.llm_max_retries
+
+    def _call():
+        target = getattr(llm, "current_client", None)
+        return (target() if callable(target) else llm).invoke(messages)
+
+    backoff_attempt = 0
+    while True:
         _limiter.wait(settings.llm_min_interval_seconds)
         try:
-            return llm.invoke(messages)
+            return _call()
         except Exception as exc:  # noqa: BLE001 - inspect message for rate limiting
             msg = str(exc)
             is_429 = "429" in msg or "rate_limit" in msg.lower() or "rate limit" in msg.lower()
-            if not is_429 or attempt == attempts - 1:
+            if not is_429:
                 raise
 
             hinted = _parse_retry_seconds(msg)
-            wait = hinted if hinted is not None else min(2.0 * (2 ** attempt), 30.0)
+            wait = hinted if hinted is not None else min(2.0 * (2 ** backoff_attempt), 30.0)
+
             if wait > settings.llm_max_backoff_seconds:
-                # A large wait means the daily token cap is exhausted; don't
-                # block the whole pipeline — surface it so callers degrade.
+                # Daily cap on the current key — switch keys and retry at once.
+                if rotate_key():
+                    continue
                 raise RateLimitExceeded(
-                    f"Groq rate limit; suggested wait {wait:.0f}s exceeds cap "
-                    f"({settings.llm_max_backoff_seconds:.0f}s). Likely the daily "
-                    "token limit — wait for reset or use a paid tier."
+                    "All configured Groq keys are rate-limited (daily token cap). "
+                    "Add more keys from separate accounts, wait for reset, or use a "
+                    "paid tier."
                 ) from exc
 
+            # Per-minute limit — bounded exponential backoff on the same key.
+            if backoff_attempt >= max_backoff_retries:
+                raise RateLimitExceeded("Exhausted retries due to per-minute rate limiting.") from exc
             logger.warning(
-                "Rate limited (attempt %d/%d); backing off %.1fs.", attempt + 1, attempts, wait
+                "Rate limited (attempt %d/%d); backing off %.1fs.",
+                backoff_attempt + 1,
+                max_backoff_retries,
+                wait,
             )
             time.sleep(wait + 0.5)
-
-    raise RateLimitExceeded("Exhausted retries due to rate limiting.")
+            backoff_attempt += 1

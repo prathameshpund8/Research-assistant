@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     )
 
     # --- Groq -------------------------------------------------------------
-    groq_api_key: str = Field(default="", description="Groq API key (required for live LLM).")
+    # Up to three keys. Put keys from DIFFERENT Groq accounts here — the daily
+    # token limit is per-account, so separate accounts multiply your budget.
+    # When one key hits its daily cap, the app rotates to the next.
+    groq_api_key: str = Field(default="", description="Groq API key #1 (required for live LLM).")
+    groq_api_key_2: str = Field(default="", description="Groq API key #2 (optional, for rotation).")
+    groq_api_key_3: str = Field(default="", description="Groq API key #3 (optional, for rotation).")
     groq_model: str = Field(default="llama-3.3-70b-versatile", description="Groq model id.")
     # Cheaper/faster model for high-volume agents (summarize, paraphrase) to
     # conserve the daily token budget.
@@ -83,8 +88,18 @@ class Settings(BaseSettings):
         return value
 
     @property
+    def groq_api_keys(self) -> list[str]:
+        """All configured Groq keys, in rotation order (deduped, non-empty)."""
+        seen: list[str] = []
+        for key in (self.groq_api_key, self.groq_api_key_2, self.groq_api_key_3):
+            k = key.strip()
+            if k and k not in seen:
+                seen.append(k)
+        return seen
+
+    @property
     def has_groq(self) -> bool:
-        return bool(self.groq_api_key.strip())
+        return bool(self.groq_api_keys)
 
     @property
     def has_tavily(self) -> bool:
