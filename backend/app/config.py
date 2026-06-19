@@ -7,10 +7,12 @@ hardcoded — they must be supplied through the environment.
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -39,7 +41,10 @@ class Settings(BaseSettings):
     search_results_per_query: int = Field(default=4, ge=1, le=10)
 
     # --- CORS -------------------------------------------------------------
-    cors_origins: list[str] = Field(
+    # NoDecode tells pydantic-settings NOT to JSON-decode this env value, so a
+    # plain comma-separated string (CORS_ORIGINS=a,b) reaches the validator
+    # below instead of crashing the JSON parser.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:4200", "http://127.0.0.1:4200"]
     )
 
@@ -49,9 +54,15 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_csv_origins(cls, value: object) -> object:
-        """Allow CORS_ORIGINS to be provided as a comma-separated string."""
+        """Accept CORS_ORIGINS as CSV ("a,b") or a JSON array ('["a","b"]')."""
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            text = value.strip()
+            if text.startswith("["):
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    pass
+            return [origin.strip() for origin in text.split(",") if origin.strip()]
         return value
 
     @property
