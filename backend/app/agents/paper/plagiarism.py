@@ -40,6 +40,11 @@ def _shingles(text: str, n: int = _NGRAM) -> set[str]:
     return {" ".join(words[i : i + n]) for i in range(max(0, len(words) - n + 1))}
 
 
+def _paragraphs(text: str) -> list[str]:
+    """Split a section body into paragraphs (preserving subsection lines)."""
+    return [p.strip() for p in re.split(r"\n+", text) if p.strip()]
+
+
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
 
@@ -72,30 +77,36 @@ def plagiarism_node(state: ResearchState) -> dict:
     out_sections: list[dict] = []
 
     for sec in sections:
-        new_sents: list[str] = []
-        for sent in _sentences(sec["body"]):
-            total += 1
-            sim = _max_overlap(sent, source_shingles)
-            if sim >= _FLAG:
-                pre_over += 1
-                flagged.append(
-                    {
-                        "section": sec["heading"],
-                        "passage": sent[:200],
-                        "source_id": "",
-                        "similarity": round(sim, 2),
-                    }
-                )
-                if llm_ok:
-                    new = _paraphrase(llm, sent)
-                    rewritten += 1
-                    if _max_overlap(new, source_shingles) >= _FLAG:
+        # Process paragraph-by-paragraph so paragraph breaks (and any "**A.
+        # Subsection**" lines) are preserved — flattening them would collapse a
+        # multi-paragraph section into a single block.
+        new_paragraphs: list[str] = []
+        for para in _paragraphs(sec["body"]):
+            new_sents: list[str] = []
+            for sent in _sentences(para):
+                total += 1
+                sim = _max_overlap(sent, source_shingles)
+                if sim >= _FLAG:
+                    pre_over += 1
+                    flagged.append(
+                        {
+                            "section": sec["heading"],
+                            "passage": sent[:200],
+                            "source_id": "",
+                            "similarity": round(sim, 2),
+                        }
+                    )
+                    if llm_ok:
+                        new = _paraphrase(llm, sent)
+                        rewritten += 1
+                        if _max_overlap(new, source_shingles) >= _FLAG:
+                            post_over += 1
+                        sent = new
+                    else:
                         post_over += 1
-                    sent = new
-                else:
-                    post_over += 1
-            new_sents.append(sent)
-        out_sections.append({"heading": sec["heading"], "body": " ".join(new_sents)})
+                new_sents.append(sent)
+            new_paragraphs.append(" ".join(new_sents))
+        out_sections.append({"heading": sec["heading"], "body": "\n\n".join(new_paragraphs)})
 
     pre_score = 100.0 if total == 0 else round(100.0 * (1 - pre_over / total), 1)
     post_score = 100.0 if total == 0 else round(100.0 * (1 - post_over / total), 1)
