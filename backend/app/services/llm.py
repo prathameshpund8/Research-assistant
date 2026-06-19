@@ -51,11 +51,13 @@ def get_llm(temperature: float = 0.2) -> ChatGroq:
         extra["http_client"] = httpx.Client(verify=False, timeout=60)
         extra["http_async_client"] = httpx.AsyncClient(verify=False, timeout=60)
 
-    logger.info("Initialising ChatGroq model=%s", settings.groq_model)
+    base_url = _normalize_groq_base_url(settings.groq_base_url)
+
+    logger.info("Initialising ChatGroq model=%s base_url=%s", settings.groq_model, base_url)
     return ChatGroq(
         api_key=settings.groq_api_key,
         model=settings.groq_model,
-        base_url=settings.groq_base_url,
+        base_url=base_url,
         temperature=temperature,
         # Keep responses bounded so hierarchical summaries stay within context.
         max_tokens=2048,
@@ -63,6 +65,20 @@ def get_llm(temperature: float = 0.2) -> ChatGroq:
         max_retries=2,
         **extra,
     )
+
+
+def _normalize_groq_base_url(url: str) -> str:
+    """Return the host base Groq's SDK expects (without the ``/openai/v1`` path).
+
+    The native Groq client appends ``/openai/v1/chat/completions`` itself, so a
+    configured value of ``https://api.groq.com/openai/v1`` would double the path
+    (``/openai/v1/openai/v1/...`` → 404). We accept either form and strip a
+    trailing ``/openai/v1`` so both work.
+    """
+    base = url.strip().rstrip("/")
+    if base.endswith("/openai/v1"):
+        base = base[: -len("/openai/v1")]
+    return base or "https://api.groq.com"
 
 
 def llm_health() -> dict[str, object]:
