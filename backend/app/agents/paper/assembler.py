@@ -11,6 +11,7 @@ import logging
 
 from app.agents._util import emit
 from app.agents.state import ResearchState
+from app.models.paper_schemas import float_placements
 
 logger = logging.getLogger(__name__)
 
@@ -42,32 +43,23 @@ def assembler_node(state: ResearchState) -> dict:
     if keywords:
         lines += [f"*Index Terms—{', '.join(keywords)}*", ""]
 
-    figures_done = False
-    tables_done = False
+    # Spread figures and tables evenly through the sections.
+    placements = float_placements(len(sections), len(figures), len(tables))
     for i, sec in enumerate(sections):
         num = _ROMAN[i] if i < len(_ROMAN) else str(i + 1)
         lines += [f"## {num}.  {sec['heading'].upper()}", "", sec["body"], ""]
+        for kind, idx in placements.get(i, []):
+            if kind == "fig" and idx < len(figures):
+                lines += [_figure_md(figures[idx]), ""]
+            elif kind == "tbl" and idx < len(tables):
+                lines += [_table_md(tables[idx]), ""]
 
-        # Embed the figure after the Introduction, the table after a
-        # discussion/analysis/applications section (best-effort placement).
-        if i == 0 and figures:
-            for fig in figures:
-                lines += [_figure_md(fig), ""]
-            figures_done = True
-        if not tables_done and any(
-            k in sec["heading"].lower() for k in ("discussion", "analysis", "application")
-        ):
-            for tbl in tables:
-                lines += [_table_md(tbl), ""]
-            tables_done = True
-
-    # Place anything not yet emitted before the references.
-    if figures and not figures_done:
-        for fig in figures:
-            lines += [_figure_md(fig), ""]
-    if tables and not tables_done:
-        for tbl in tables:
-            lines += [_table_md(tbl), ""]
+    # No sections? Emit any floats before the references.
+    for kind, idx in placements.get(-1, []):
+        if kind == "fig" and idx < len(figures):
+            lines += [_figure_md(figures[idx]), ""]
+        elif kind == "tbl" and idx < len(tables):
+            lines += [_table_md(tables[idx]), ""]
 
     if references:
         lines += ["## References", ""]

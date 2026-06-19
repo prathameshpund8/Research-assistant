@@ -89,6 +89,39 @@ class VerificationReport(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+def float_placements(
+    n_sections: int, n_figures: int, n_tables: int
+) -> dict[int, list[tuple[str, int]]]:
+    """Distribute figures/tables evenly after sections.
+
+    Returns ``{section_index: [("fig"|"tbl", item_index), ...]}``. Figures and
+    tables are interleaved and spread across the sections so they don't cluster.
+    A section index of -1 means "render before the references" (no sections).
+    """
+    items: list[tuple[str, int]] = []
+    fi = ti = 0
+    while fi < n_figures or ti < n_tables:
+        if fi < n_figures:
+            items.append(("fig", fi))
+            fi += 1
+        if ti < n_tables:
+            items.append(("tbl", ti))
+            ti += 1
+
+    placements: dict[int, list[tuple[str, int]]] = {}
+    if not items:
+        return placements
+    if n_sections <= 0:
+        placements[-1] = items
+        return placements
+
+    m = len(items)
+    for j, item in enumerate(items):
+        idx = min(n_sections - 1, int(round((j + 1) * n_sections / (m + 1))))
+        placements.setdefault(idx, []).append(item)
+    return placements
+
+
 class PaperResult(BaseModel):
     paper_id: str
     topic: str

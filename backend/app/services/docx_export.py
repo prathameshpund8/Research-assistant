@@ -23,7 +23,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from app.models.paper_schemas import PaperFigure, PaperResult, PaperTable
+from app.models.paper_schemas import PaperFigure, PaperResult, PaperTable, float_placements
 
 _ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
 _FONT = "Times New Roman"
@@ -181,9 +181,8 @@ def build_paper_docx(paper: PaperResult) -> bytes:
         kw.font.size = Pt(9)
         kw.font.name = _FONT
 
-    # Sections (with figure after Intro, table after analysis/discussion).
-    figures_done = False
-    tables_done = False
+    # Sections, with figures/tables spread evenly through them.
+    placements = float_placements(len(paper.sections), len(paper.figures), len(paper.tables))
     for i, section in enumerate(paper.sections):
         num = _ROMAN[i] if i < len(_ROMAN) else str(i + 1)
         h = doc.add_paragraph()
@@ -198,23 +197,17 @@ def build_paper_docx(paper: PaperResult) -> bytes:
             p.paragraph_format.first_line_indent = Pt(12)
             _add_runs_with_bold(p, para_text.strip(), 10)
 
-        if i == 0 and paper.figures:
-            for fig in paper.figures:
-                _add_figure(doc, fig)
-            figures_done = True
-        if not tables_done and any(
-            k in section.heading.lower() for k in ("discussion", "analysis", "application")
-        ):
-            for tbl in paper.tables:
-                _add_table(doc, tbl)
-            tables_done = True
+        for kind, idx in placements.get(i, []):
+            if kind == "fig" and idx < len(paper.figures):
+                _add_figure(doc, paper.figures[idx])
+            elif kind == "tbl" and idx < len(paper.tables):
+                _add_table(doc, paper.tables[idx])
 
-    if paper.figures and not figures_done:
-        for fig in paper.figures:
-            _add_figure(doc, fig)
-    if paper.tables and not tables_done:
-        for tbl in paper.tables:
-            _add_table(doc, tbl)
+    for kind, idx in placements.get(-1, []):
+        if kind == "fig" and idx < len(paper.figures):
+            _add_figure(doc, paper.figures[idx])
+        elif kind == "tbl" and idx < len(paper.tables):
+            _add_table(doc, paper.tables[idx])
 
     # References.
     if paper.references:
