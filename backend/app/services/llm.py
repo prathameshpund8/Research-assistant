@@ -11,9 +11,11 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
+import httpx
 from langchain_groq import ChatGroq
 
 from app.config import get_settings
+from app.tls import configure_tls
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +36,20 @@ def get_llm(temperature: float = 0.2) -> ChatGroq:
         LLMConfigurationError: if ``GROQ_API_KEY`` is missing.
     """
     settings = get_settings()
+    # Ensure HTTPS verification trusts the corporate/OS CA before any API call.
+    configure_tls()
+
     if not settings.has_groq:
         raise LLMConfigurationError(
             "GROQ_API_KEY is not set. Add it to your environment or .env file."
         )
+
+    # Last-resort insecure mode: hand ChatGroq httpx clients with verification
+    # off. The secure default (verify_ssl=True) relies on truststore instead.
+    extra: dict = {}
+    if not settings.verify_ssl:
+        extra["http_client"] = httpx.Client(verify=False, timeout=60)
+        extra["http_async_client"] = httpx.AsyncClient(verify=False, timeout=60)
 
     logger.info("Initialising ChatGroq model=%s", settings.groq_model)
     return ChatGroq(
@@ -49,6 +61,7 @@ def get_llm(temperature: float = 0.2) -> ChatGroq:
         max_tokens=2048,
         timeout=60,
         max_retries=2,
+        **extra,
     )
 
 

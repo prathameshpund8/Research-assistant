@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.models.schemas import HealthResponse
 from app.services.llm import llm_health
 from app.services.search import get_search_service
+from app.tls import configure_tls
 
 settings = get_settings()
 
@@ -28,6 +29,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
 )
 logger = logging.getLogger("research_assistant")
+
+# Trust the OS/corporate CA store for all outbound HTTPS (Groq, Tavily) before
+# any client is created. Without this, HTTPS-inspection proxies break TLS.
+configure_tls()
 
 app = FastAPI(
     title="Autonomous Research Assistant",

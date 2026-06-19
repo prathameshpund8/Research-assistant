@@ -37,8 +37,11 @@ class SearchService:
 
         if self._settings.has_tavily:
             try:
+                from app.tls import configure_tls
                 from tavily import TavilyClient  # imported lazily
 
+                # Ensure HTTPS to Tavily trusts the corporate/OS CA too.
+                configure_tls()
                 self._client = TavilyClient(api_key=self._settings.tavily_api_key)
                 self._mode = "tavily"
             except Exception as exc:  # pragma: no cover - defensive

@@ -48,6 +48,13 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:4200", "http://127.0.0.1:4200"]
     )
 
+    # --- TLS / networking -------------------------------------------------
+    # On corporate networks that do HTTPS inspection, the TLS chain is re-signed
+    # with an internal root CA. With verify_ssl=True (default) we trust the OS
+    # certificate store (which already has that CA) via `truststore`. Set to
+    # False only as a last resort to disable verification entirely (insecure).
+    verify_ssl: bool = Field(default=True)
+
     # --- Server -----------------------------------------------------------
     log_level: str = Field(default="INFO")
 

@@ -233,6 +233,25 @@ All settings are environment variables (see `.env.example`):
 
 ---
 
+## Troubleshooting
+
+**Report says "Generated without an LLM" / all sources are `[MOCK]`.**
+Every agent fell back because it couldn't reach the LLM/search. Check the backend logs:
+
+- `GROQ_API_KEY is not set` → the key isn't being loaded. Note local runs read
+  **`backend/.env`** (relative to where you launch `uvicorn`), not the repo-root
+  `.env`. Put your key in `backend/.env`, or run from a dir whose `.env` has it.
+- `[SSL: CERTIFICATE_VERIFY_FAILED] self-signed certificate in certificate chain`
+  → you're behind a corporate **HTTPS-inspection proxy**. The app trusts the OS
+  certificate store via `truststore` (enabled by default, `VERIFY_SSL=true`), which
+  resolves this — make sure `truststore` is installed (`pip install -r requirements.txt`)
+  and restart. As a last resort you can set `VERIFY_SSL=false` (insecure) in `.env`.
+
+**Confirm everything is wired up:** open <http://localhost:8000/health> — you want
+`"llm": {"configured": true}` and, for live search, `"search": {"mode": "tavily"}`.
+A `mock` search mode means no `TAVILY_API_KEY`, so the report is LLM-written but based
+on placeholder sources — add a Tavily key for real, fact-grounded research.
+
 ## Notes & limitations
 
 - Job state is **in-memory** (single process). For production, back the job
