@@ -25,11 +25,14 @@ or citations.
 
 Rules:
 - Write formal, academic IEEE prose (third person, present tense where natural).
-- Be substantial: write 3-5 well-developed paragraphs (roughly 250-400 words).
+- LENGTH IS IMPORTANT: write AT LEAST 4 well-developed paragraphs
+  (about 350-550 words total). Each paragraph should be 4-6 sentences. Develop
+  the ideas fully with explanation, context, examples, and analysis.
 - Synthesise and EXPLAIN the facts in your own words — do NOT copy source
-  wording. Paraphrase; connect ideas; compare viewpoints.
+  wording. Paraphrase; connect ideas; compare viewpoints; elaborate.
 - Cite every factual claim with the source ids in square brackets, e.g. [S3][S7].
-- You MAY use "**A. Subsection Title**" bold subsections to organise the section.
+- Use 2-3 "**A. Subsection Title**" bold subsections to organise and expand the
+  section into distinct themes.
 - Do not repeat the section heading. Avoid bullet lists unless truly apt.
 - Do NOT write citations you were not given; only use the listed source ids."""
 
@@ -50,11 +53,16 @@ ABSTRACT_USER_TEMPLATE = "Paper title: {title}\n\nSection summaries:\n{summaries
 # ===========================================================================
 
 
+# Cap how many facts go into each section prompt. Sending *all* facts (often
+# 50-100) makes each call ~8k tokens, which blows the per-minute token limit and
+# forces a fallback. A focused subset keeps calls small so they succeed.
+_MAX_FACTS_PER_SECTION = 22
+
+
 def section_writer_node(state: ResearchState) -> dict:
     title = state.get("paper_title", state["query"])
     plan = state.get("section_plan", [])
     facts = state.get("facts", [])
-    facts_block = "\n".join(f"- ({f['source_id']}) {f['text']}" for f in facts) or "(no facts)"
 
     emit(state, "writer", "started", f"Drafting {len(plan)} sections from {len(facts)} facts.")
 
@@ -68,9 +76,12 @@ def section_writer_node(state: ResearchState) -> dict:
         llm_ok = False
 
     sections: list[dict] = []
-    for spec in plan:
+    for i, spec in enumerate(plan):
         heading = spec["heading"]
         emit(state, "writer", "progress", f"Writing section: {heading}")
+        # Give each section a different window of facts (less repetition + a
+        # smaller prompt that stays under the per-minute token limit).
+        section_facts = _facts_block(facts, start=i * _MAX_FACTS_PER_SECTION)
         if llm_ok:
             try:
                 msgs = [
@@ -80,7 +91,7 @@ def section_writer_node(state: ResearchState) -> dict:
                             title=title,
                             heading=heading,
                             guidance=spec.get("guidance", ""),
-                            facts=facts_block,
+                            facts=section_facts,
                         )
                     ),
                 ]
@@ -97,6 +108,16 @@ def section_writer_node(state: ResearchState) -> dict:
 
     emit(state, "writer", "completed", f"Drafted {len(sections)} sections and the abstract.")
     return {"sections": sections, "abstract": abstract}
+
+
+def _facts_block(facts: list[dict], start: int = 0) -> str:
+    """A size-capped, rotated window of facts for one section's prompt."""
+    if not facts:
+        return "(no facts)"
+    n = len(facts)
+    count = min(_MAX_FACTS_PER_SECTION, n)
+    window = [facts[(start + i) % n] for i in range(count)]
+    return "\n".join(f"- ({f['source_id']}) {f['text'][:240]}" for f in window)
 
 
 def _write_abstract(llm, title: str, sections: list[dict]) -> str:
