@@ -28,25 +28,40 @@ class RawResult:
 
 
 class SearchService:
-    """Thin facade over Tavily with an offline mock fallback."""
+    """Web search facade with tiered providers.
+
+    Provider preference: **Tavily** (if a key is set) → **DuckDuckGo** (keyless,
+    real web results) → **mock** (offline placeholders). Each tier also degrades
+    to the next at *runtime* if a call fails.
+    """
 
     def __init__(self) -> None:
         self._settings = get_settings()
         self._client = None
         self._mode = "mock"
 
+        # Trust the OS/corporate CA before any provider makes HTTPS calls.
+        from app.tls import configure_tls
+
+        configure_tls()
+
         if self._settings.has_tavily:
             try:
-                from app.tls import configure_tls
                 from tavily import TavilyClient  # imported lazily
 
-                # Ensure HTTPS to Tavily trusts the corporate/OS CA too.
-                configure_tls()
                 self._client = TavilyClient(api_key=self._settings.tavily_api_key)
                 self._mode = "tavily"
             except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("Tavily init failed (%s); falling back to mock.", exc)
-                self._mode = "mock"
+                logger.warning("Tavily init failed (%s); trying keyless search.", exc)
+
+        # No Tavily key? Use keyless DuckDuckGo if the package is available.
+        if self._mode == "mock":
+            try:
+                import ddgs  # noqa: F401
+
+                self._mode = "duckduckgo"
+            except Exception:
+                logger.info("ddgs not installed; using mock search.")
 
         logger.info("SearchService initialised in '%s' mode.", self._mode)
 
@@ -55,13 +70,24 @@ class SearchService:
         return self._mode
 
     def search(self, query: str, max_results: Optional[int] = None) -> list[RawResult]:
-        """Return up to ``max_results`` hits for ``query``."""
+        """Return up to ``max_results`` hits for ``query`` (degrading on failure)."""
         k = max_results or self._settings.search_results_per_query
+
         if self._mode == "tavily" and self._client is not None:
             try:
                 return self._search_tavily(query, k)
             except Exception as exc:  # network / quota errors -> degrade
-                logger.warning("Tavily search failed (%s); using mock results.", exc)
+                logger.warning("Tavily search failed (%s); trying DuckDuckGo.", exc)
+
+        if self._mode in ("tavily", "duckduckgo"):
+            try:
+                results = self._search_duckduckgo(query, k)
+                if results:
+                    return results
+                logger.warning("DuckDuckGo returned no results for %r; using mock.", query)
+            except Exception as exc:
+                logger.warning("DuckDuckGo search failed (%s); using mock results.", exc)
+
         return self._search_mock(query, k)
 
     # -- providers ---------------------------------------------------------
@@ -82,6 +108,27 @@ class SearchService:
                     score=float(item.get("score", 0.0)),
                 )
             )
+        return results
+
+    def _search_duckduckgo(self, query: str, k: int) -> list[RawResult]:
+        """Keyless real web search via DuckDuckGo (ddgs package)."""
+        from ddgs import DDGS
+
+        results: list[RawResult] = []
+        with DDGS() as ddgs_client:
+            for rank, item in enumerate(ddgs_client.text(query, max_results=k)):
+                url = item.get("href") or item.get("url") or ""
+                if not url:
+                    continue
+                results.append(
+                    RawResult(
+                        title=item.get("title") or url,
+                        url=url,
+                        snippet=(item.get("body") or "")[:600],
+                        # No provider score; approximate by result ordering.
+                        score=round(max(0.0, 1.0 - rank * 0.1), 2),
+                    )
+                )
         return results
 
     def _search_mock(self, query: str, k: int) -> list[RawResult]:
@@ -110,7 +157,11 @@ class SearchService:
         return results
 
     def health(self) -> dict[str, object]:
-        return {"mode": self._mode, "tavily_configured": self._settings.has_tavily}
+        return {
+            "mode": self._mode,  # tavily | duckduckgo | mock
+            "tavily_configured": self._settings.has_tavily,
+            "live": self._mode != "mock",
+        }
 
 
 _search_singleton: Optional[SearchService] = None

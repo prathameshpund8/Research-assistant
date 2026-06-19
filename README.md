@@ -6,8 +6,8 @@ streams every agent's progress to the browser in real time.
 
 - **Backend:** FastAPI (Python 3.11+) + LangGraph + Groq (`llama-3.3-70b-versatile`)
 - **Frontend:** Angular 20 (standalone components) + ngx-markdown
-- **Search:** Tavily, with an automatic offline **mock fallback** so the app
-  runs with zero API keys
+- **Search:** Tavily → **keyless DuckDuckGo** (real web results, no key needed)
+  → offline **mock** fallback, so the app produces useful reports with zero API keys
 - **Streaming:** Server-Sent Events (SSE) for live per-agent progress
 
 ---
@@ -76,7 +76,7 @@ re-search rounds.
 | # | Agent | Responsibility |
 |---|-------|----------------|
 | 1 | **Planner** | Decomposes the query into 3–6 focused sub-questions + a short research plan. |
-| 2 | **Searcher** | Runs a web search per sub-question (Tavily or mock), collecting URLs + snippets as citable sources (`S1`, `S2`, …). On re-search rounds it targets the open gaps and de-duplicates by URL. |
+| 2 | **Searcher** | Runs a web search per sub-question (Tavily → DuckDuckGo → mock), collecting URLs + snippets as citable sources (`S1`, `S2`, …). On re-search rounds it targets the open gaps and de-duplicates by URL. |
 | 3 | **Summarizer** | **Hierarchical summarization** — summarizes *each source individually* into atomic facts, each keeping its `source_id`, before any final synthesis. |
 | 4 | **Critic** | Cross-checks facts against the sub-questions, flags gaps and contradictions, and decides whether to re-search (back to Searcher) or proceed (to Writer). |
 | 5 | **Writer** | Compiles a structured, cited Markdown report: executive summary, thematic sections, a "Disagreements & Open Gaps" note, and a Sources list. |
@@ -99,8 +99,9 @@ each file in `backend/app/agents/` (look for `# === EDITABLE PROMPT ===`).
 - **Surfacing disagreement** — when sources contradict, the report presents
   both sides in a dedicated section rather than silently picking one.
 - **Graceful degradation** — with no `GROQ_API_KEY` the agents fall back to
-  deterministic heuristics; with no `TAVILY_API_KEY` a mock search is used.
-  The whole pipeline still runs end-to-end.
+  deterministic heuristics; with no `TAVILY_API_KEY` the Searcher uses keyless
+  DuckDuckGo (and only falls back to mock if that's unreachable). The whole
+  pipeline runs end-to-end and still produces real, cited reports.
 
 ---
 
@@ -248,9 +249,11 @@ Every agent fell back because it couldn't reach the LLM/search. Check the backen
   and restart. As a last resort you can set `VERIFY_SSL=false` (insecure) in `.env`.
 
 **Confirm everything is wired up:** open <http://localhost:8000/health> — you want
-`"llm": {"configured": true}` and, for live search, `"search": {"mode": "tavily"}`.
-A `mock` search mode means no `TAVILY_API_KEY`, so the report is LLM-written but based
-on placeholder sources — add a Tavily key for real, fact-grounded research.
+`"llm": {"configured": true}` and `"search": {"live": true}`. Search `mode` will be
+`tavily` (if a key is set), `duckduckgo` (keyless real web search), or `mock` (offline
+placeholders — only used if DuckDuckGo is unreachable). DuckDuckGo needs no key, so you
+get real, fact-grounded reports out of the box; add a `TAVILY_API_KEY` for higher-quality
+retrieval.
 
 ## Notes & limitations
 
