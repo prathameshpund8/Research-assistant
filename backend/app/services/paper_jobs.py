@@ -125,7 +125,13 @@ class PaperJobManager:
             state = new_state(job.topic, emit=emit)
             state["details"] = job.details
             state["authors"] = job.authors
-            final = await asyncio.to_thread(paper_graph.invoke, state)
+            # The paper graph has ~11 nodes plus the bounded Critic->Searcher
+            # re-search loop, which can exceed LangGraph's default step limit (25).
+            settings = get_settings()
+            recursion_limit = 20 + settings.max_research_rounds * 4 + 10
+            final = await asyncio.to_thread(
+                paper_graph.invoke, state, {"recursion_limit": recursion_limit}
+            )
             job.result = _state_to_paper(job, final)
             job.status = "completed"
             self._append(
