@@ -12,6 +12,7 @@ the backend image).
 
 from __future__ import annotations
 
+import base64
 import io
 import re
 
@@ -20,9 +21,9 @@ from docx.enum.section import WD_SECTION
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 
-from app.models.paper_schemas import PaperResult
+from app.models.paper_schemas import PaperFigure, PaperResult, PaperTable
 
 _ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
 _FONT = "Times New Roman"
@@ -56,6 +57,53 @@ def _add_runs_with_bold(paragraph, text: str, size: int) -> None:
         r = paragraph.add_run(text[pos:])
         r.font.size = Pt(size)
         r.font.name = _FONT
+
+
+def _add_figure(doc, fig: PaperFigure) -> None:
+    if not fig.image_base64:
+        return
+    try:
+        data = base64.b64decode(fig.image_base64)
+    except Exception:
+        return
+    pic_p = doc.add_paragraph()
+    pic_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = pic_p.add_run()
+    run.add_picture(io.BytesIO(data), width=Inches(3.2))
+    cap = doc.add_paragraph()
+    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cr = cap.add_run(f"Fig. {fig.number}. {fig.caption}")
+    cr.font.size = Pt(8)
+    cr.font.name = _FONT
+
+
+def _add_table(doc, tbl: PaperTable) -> None:
+    if not tbl.columns:
+        return
+    cap = doc.add_paragraph()
+    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cr = cap.add_run(f"TABLE {tbl.number}. {tbl.caption.upper()}")
+    cr.bold = True
+    cr.font.size = Pt(8)
+    cr.font.name = _FONT
+
+    table = doc.add_table(rows=1, cols=len(tbl.columns))
+    table.style = "Table Grid"
+    table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for j, col in enumerate(tbl.columns):
+        cell = table.rows[0].cells[j]
+        cell.text = ""
+        run = cell.paragraphs[0].add_run(str(col))
+        run.bold = True
+        run.font.size = Pt(8)
+        run.font.name = _FONT
+    for row in tbl.rows:
+        cells = table.add_row().cells
+        for j, val in enumerate(row[: len(tbl.columns)]):
+            cells[j].text = ""
+            run = cells[j].paragraphs[0].add_run(str(val))
+            run.font.size = Pt(8)
+            run.font.name = _FONT
 
 
 def build_paper_docx(paper: PaperResult) -> bytes:
@@ -133,7 +181,9 @@ def build_paper_docx(paper: PaperResult) -> bytes:
         kw.font.size = Pt(9)
         kw.font.name = _FONT
 
-    # Sections.
+    # Sections (with figure after Intro, table after analysis/discussion).
+    figures_done = False
+    tables_done = False
     for i, section in enumerate(paper.sections):
         num = _ROMAN[i] if i < len(_ROMAN) else str(i + 1)
         h = doc.add_paragraph()
@@ -147,6 +197,24 @@ def build_paper_docx(paper: PaperResult) -> bytes:
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             p.paragraph_format.first_line_indent = Pt(12)
             _add_runs_with_bold(p, para_text.strip(), 10)
+
+        if i == 0 and paper.figures:
+            for fig in paper.figures:
+                _add_figure(doc, fig)
+            figures_done = True
+        if not tables_done and any(
+            k in section.heading.lower() for k in ("discussion", "analysis", "application")
+        ):
+            for tbl in paper.tables:
+                _add_table(doc, tbl)
+            tables_done = True
+
+    if paper.figures and not figures_done:
+        for fig in paper.figures:
+            _add_figure(doc, fig)
+    if paper.tables and not tables_done:
+        for tbl in paper.tables:
+            _add_table(doc, tbl)
 
     # References.
     if paper.references:

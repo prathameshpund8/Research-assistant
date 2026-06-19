@@ -28,11 +28,14 @@ import { PaperResult } from '../../models/paper.model';
 
       <!-- Quality reports -->
       <details class="report" *ngIf="paper.originality.flagged.length || paper.verification.notes.length">
-        <summary>Quality &amp; originality report</summary>
+        <summary>Plagiarism &amp; quality report</summary>
         <div class="report-body">
           <p>
-            <strong>Originality check</strong> ({{ paper.originality.method }}):
-            rewrote {{ paper.originality.rewritten }} near-duplicate passage(s).
+            <strong>Plagiarism check</strong> ({{ paper.originality.method }}):
+            originality improved from {{ paper.originality.pre_score }}% to
+            {{ paper.originality.score }}% by paraphrasing
+            {{ paper.originality.rewritten }} flagged passage(s);
+            {{ paper.originality.still_flagged }} still above threshold.
           </p>
           <ul *ngIf="paper.originality.flagged.length">
             <li *ngFor="let f of paper.originality.flagged">
@@ -51,6 +54,14 @@ import { PaperResult } from '../../models/paper.model';
         ⚠ AI-generated draft grounded in cited web sources. Review and verify all claims,
         add original analysis, and disclose AI assistance before any submission — this is a
         starting draft, not a publication-ready paper.
+      </div>
+
+      <!-- Figures (rendered from structured data so they always display) -->
+      <div class="figures" *ngIf="paper.figures.length">
+        <figure *ngFor="let fig of paper.figures">
+          <img [src]="'data:image/png;base64,' + fig.image_base64" [alt]="fig.caption" />
+          <figcaption>Fig. {{ fig.number }}. {{ fig.caption }}</figcaption>
+        </figure>
       </div>
 
       <markdown class="markdown-body paper-body" [data]="paper.paper_markdown"></markdown>
@@ -142,7 +153,32 @@ import { PaperResult } from '../../models/paper.model';
       .paper-body {
         column-count: 1;
       }
+      .figures {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: center;
+        margin-bottom: 1.25rem;
+      }
+      .figures figure {
+        margin: 0;
+        max-width: 360px;
+        text-align: center;
+      }
+      .figures img {
+        max-width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        padding: 0.5rem;
+      }
+      .figures figcaption {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 0.4rem;
+      }
     `,
+
   ],
 })
 export class PaperViewComponent {

@@ -18,8 +18,10 @@ from app.config import get_settings
 from app.models.paper_schemas import (
     Author,
     OriginalityReport,
+    PaperFigure,
     PaperResult,
     PaperSection,
+    PaperTable,
     Reference,
     VerificationReport,
 )
@@ -134,6 +136,8 @@ def _state_to_paper(job: PaperJob, state: dict) -> PaperResult:
     settings = get_settings()
     authors = [Author(**a) if isinstance(a, dict) else Author() for a in state.get("authors", [])]
     sections = [PaperSection(**s) for s in state.get("sections", [])]
+    tables = [PaperTable(**t) for t in state.get("tables", [])]
+    figures = [PaperFigure(**f) for f in state.get("figures", [])]
     references = [Reference(**r) for r in state.get("references", [])]
     originality = OriginalityReport(**state["originality"]) if state.get("originality") else OriginalityReport()
     verification = (
@@ -149,6 +153,8 @@ def _state_to_paper(job: PaperJob, state: dict) -> PaperResult:
         abstract=state.get("abstract", ""),
         keywords=state.get("keywords", []),
         sections=sections,
+        tables=tables,
+        figures=figures,
         references=references,
         originality=originality,
         verification=verification,

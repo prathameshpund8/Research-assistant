@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents._util import emit, parse_json
 from app.agents.state import ResearchState
-from app.services.llm import get_llm
+from app.services.llm import get_fast_llm as get_llm
 
 logger = logging.getLogger(__name__)
 

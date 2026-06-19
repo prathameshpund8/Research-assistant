@@ -19,14 +19,18 @@ from app.services.llm import get_llm
 logger = logging.getLogger(__name__)
 
 # === EDITABLE PROMPTS ======================================================
-SECTION_SYSTEM_PROMPT = """You are writing one section of an IEEE conference paper.
-Use ONLY the provided facts; do not invent facts, numbers, or citations.
+SECTION_SYSTEM_PROMPT = """You are writing one section of a full-length (6-7 page)
+IEEE conference paper. Use ONLY the provided facts; do not invent facts, numbers,
+or citations.
 
 Rules:
 - Write formal, academic IEEE prose (third person, present tense where natural).
+- Be substantial: write 3-5 well-developed paragraphs (roughly 250-400 words).
+- Synthesise and EXPLAIN the facts in your own words — do NOT copy source
+  wording. Paraphrase; connect ideas; compare viewpoints.
 - Cite every factual claim with the source ids in square brackets, e.g. [S3][S7].
-- You MAY use "A. Subsection Title" markdown-style bold subsections if helpful.
-- 2-4 paragraphs. Do not repeat the section heading. No bullet lists unless apt.
+- You MAY use "**A. Subsection Title**" bold subsections to organise the section.
+- Do not repeat the section heading. Avoid bullet lists unless truly apt.
 - Do NOT write citations you were not given; only use the listed source ids."""
 
 SECTION_USER_TEMPLATE = (

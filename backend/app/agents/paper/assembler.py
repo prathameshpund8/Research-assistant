@@ -24,6 +24,8 @@ def assembler_node(state: ResearchState) -> dict:
     keywords = state.get("keywords", [])
     sections = state.get("sections", [])
     references = state.get("references", [])
+    tables = state.get("tables", [])
+    figures = state.get("figures", [])
 
     emit(state, "writer", "started", "Assembling the final paper preview.")
 
@@ -40,9 +42,32 @@ def assembler_node(state: ResearchState) -> dict:
     if keywords:
         lines += [f"*Index Terms—{', '.join(keywords)}*", ""]
 
+    figures_done = False
+    tables_done = False
     for i, sec in enumerate(sections):
         num = _ROMAN[i] if i < len(_ROMAN) else str(i + 1)
         lines += [f"## {num}.  {sec['heading'].upper()}", "", sec["body"], ""]
+
+        # Embed the figure after the Introduction, the table after a
+        # discussion/analysis/applications section (best-effort placement).
+        if i == 0 and figures:
+            for fig in figures:
+                lines += [_figure_md(fig), ""]
+            figures_done = True
+        if not tables_done and any(
+            k in sec["heading"].lower() for k in ("discussion", "analysis", "application")
+        ):
+            for tbl in tables:
+                lines += [_table_md(tbl), ""]
+            tables_done = True
+
+    # Place anything not yet emitted before the references.
+    if figures and not figures_done:
+        for fig in figures:
+            lines += [_figure_md(fig), ""]
+    if tables and not tables_done:
+        for tbl in tables:
+            lines += [_table_md(tbl), ""]
 
     if references:
         lines += ["## References", ""]
@@ -55,6 +80,32 @@ def assembler_node(state: ResearchState) -> dict:
         state,
         "writer",
         "completed",
-        f"Paper assembled: {len(sections)} sections, {len(references)} references.",
+        f"Paper assembled: {len(sections)} sections, {len(tables)} table(s), "
+        f"{len(figures)} figure(s), {len(references)} references.",
     )
     return {"paper_markdown": markdown}
+
+
+_ROMAN_TBL = ["I", "II", "III", "IV", "V"]
+
+
+def _table_md(tbl: dict) -> str:
+    cols = tbl.get("columns", [])
+    rows = tbl.get("rows", [])
+    if not cols:
+        return ""
+    num = _ROMAN_TBL[(tbl.get("number", 1) - 1) % len(_ROMAN_TBL)]
+    out = [f"**TABLE {num}. {tbl.get('caption', '').upper()}**", ""]
+    out.append("| " + " | ".join(cols) + " |")
+    out.append("| " + " | ".join("---" for _ in cols) + " |")
+    for row in rows:
+        cells = [str(c).replace("|", "\\|") for c in row]
+        out.append("| " + " | ".join(cells) + " |")
+    return "\n".join(out)
+
+
+def _figure_md(fig: dict) -> str:
+    """In-text figure caption. The actual image is rendered by the frontend
+    (from structured data) and embedded in the .docx, so the Markdown only
+    carries the IEEE caption reference."""
+    return f"*Fig. {fig.get('number', 1)}. {fig.get('caption', '')}*"

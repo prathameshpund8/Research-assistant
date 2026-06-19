@@ -24,17 +24,38 @@ class LLMConfigurationError(RuntimeError):
     """Raised when the LLM is requested but no Groq API key is configured."""
 
 
-@lru_cache
-def get_llm(temperature: float = 0.2) -> ChatGroq:
-    """Build (and cache) a ChatGroq client.
+class _RetryingLLM:
+    """Wraps a ChatGroq so every ``.invoke`` is throttled and 429-retried.
 
-    Args:
-        temperature: Sampling temperature. Lower is more deterministic, which
-            suits planning / fact-extraction; the Writer may use a touch more.
-
-    Raises:
-        LLMConfigurationError: if ``GROQ_API_KEY`` is missing.
+    Agents call ``llm.invoke(messages)`` unchanged; rate limiting is applied
+    transparently. Other attributes pass through to the wrapped client.
     """
+
+    def __init__(self, inner: ChatGroq) -> None:
+        self._inner = inner
+
+    def invoke(self, messages, **_kw):
+        from app.services.rate_limit import invoke_with_retry
+
+        return invoke_with_retry(self._inner, messages)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+@lru_cache
+def get_llm(temperature: float = 0.2) -> _RetryingLLM:
+    """Build (and cache) the primary rate-limited ChatGroq client."""
+    return _build(get_settings().groq_model, temperature, max_tokens=3072)
+
+
+@lru_cache
+def get_fast_llm(temperature: float = 0.2) -> _RetryingLLM:
+    """Cheaper/faster model for high-volume agents (summarize, paraphrase)."""
+    return _build(get_settings().groq_fast_model, temperature, max_tokens=1536)
+
+
+def _build(model: str, temperature: float, max_tokens: int) -> _RetryingLLM:
     settings = get_settings()
     # Ensure HTTPS verification trusts the corporate/OS CA before any API call.
     configure_tls()
@@ -53,18 +74,18 @@ def get_llm(temperature: float = 0.2) -> ChatGroq:
 
     base_url = _normalize_groq_base_url(settings.groq_base_url)
 
-    logger.info("Initialising ChatGroq model=%s base_url=%s", settings.groq_model, base_url)
-    return ChatGroq(
+    logger.info("Initialising ChatGroq model=%s base_url=%s", model, base_url)
+    client = ChatGroq(
         api_key=settings.groq_api_key,
-        model=settings.groq_model,
+        model=model,
         base_url=base_url,
         temperature=temperature,
-        # Keep responses bounded so hierarchical summaries stay within context.
-        max_tokens=2048,
+        max_tokens=max_tokens,
         timeout=60,
-        max_retries=2,
+        max_retries=0,  # our invoke_with_retry handles backoff
         **extra,
     )
+    return _RetryingLLM(client)
 
 
 def _normalize_groq_base_url(url: str) -> str:

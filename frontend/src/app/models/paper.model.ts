@@ -29,9 +29,24 @@ export interface FlaggedPassage {
 
 export interface OriginalityReport {
   score: number;
+  pre_score: number;
   flagged: FlaggedPassage[];
   rewritten: number;
+  still_flagged: number;
   method: string;
+}
+
+export interface PaperTable {
+  number: number;
+  caption: string;
+  columns: string[];
+  rows: string[][];
+}
+
+export interface PaperFigure {
+  number: number;
+  caption: string;
+  image_base64: string;
 }
 
 export interface VerificationReport {
@@ -51,6 +66,8 @@ export interface PaperResult {
   abstract: string;
   keywords: string[];
   sections: PaperSection[];
+  tables: PaperTable[];
+  figures: PaperFigure[];
   references: Reference[];
   originality: OriginalityReport;
   verification: VerificationReport;

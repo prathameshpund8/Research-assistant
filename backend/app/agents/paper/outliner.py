@@ -21,8 +21,9 @@ from app.services.llm import get_llm
 logger = logging.getLogger(__name__)
 
 # === EDITABLE PROMPT =======================================================
-OUTLINER_SYSTEM_PROMPT = """You are the Outliner for an IEEE conference paper.
-Given a research topic and optional scope details, produce a JSON plan.
+OUTLINER_SYSTEM_PROMPT = """You are the Outliner for a full-length (6-7 page)
+IEEE conference paper. Given a research topic and optional scope details,
+produce a JSON plan with 7-8 substantial sections.
 
 Return STRICT JSON only:
 {
@@ -30,24 +31,30 @@ Return STRICT JSON only:
   "keywords": ["<4-6 index terms>"],
   "sections": [
     {"heading": "Introduction", "guidance": "<what this section must cover>"},
+    {"heading": "Background", "guidance": "..."},
     {"heading": "Related Work", "guidance": "..."},
-    {"heading": "<Approach/Methodology heading>", "guidance": "..."},
-    {"heading": "Analysis and Discussion", "guidance": "..."},
+    {"heading": "<Methodology/Approach heading>", "guidance": "..."},
+    {"heading": "<Applications or Results heading>", "guidance": "..."},
+    {"heading": "Challenges and Limitations", "guidance": "..."},
+    {"heading": "Discussion and Future Directions", "guidance": "..."},
     {"heading": "Conclusion", "guidance": "..."}
   ],
-  "sub_questions": ["<5-7 research questions to investigate the topic>"]
+  "sub_questions": ["<7-9 research questions to investigate the topic deeply>"]
 }
-Keep section headings standard for an IEEE paper. No text outside the JSON."""
+Keep headings standard for an IEEE paper. No text outside the JSON."""
 
 OUTLINER_USER_TEMPLATE = "Topic: {topic}\n\nScope / details (may be empty):\n{details}"
 # ===========================================================================
 
 DEFAULT_SECTIONS = [
     {"heading": "Introduction", "guidance": "Motivate the topic, state the problem and contributions."},
+    {"heading": "Background", "guidance": "Define core concepts and necessary preliminaries."},
     {"heading": "Related Work", "guidance": "Survey prior work and position this paper."},
     {"heading": "Methodology", "guidance": "Describe the approach, methods, or framework."},
-    {"heading": "Analysis and Discussion", "guidance": "Synthesise findings, trade-offs, implications."},
-    {"heading": "Conclusion", "guidance": "Summarise contributions and future work."},
+    {"heading": "Applications", "guidance": "Describe use cases and where the topic is applied."},
+    {"heading": "Challenges and Limitations", "guidance": "Discuss open problems, risks, trade-offs."},
+    {"heading": "Discussion and Future Directions", "guidance": "Synthesise implications and future work."},
+    {"heading": "Conclusion", "guidance": "Summarise contributions and outlook."},
 ]
 
 
@@ -84,8 +91,10 @@ def outliner_node(state: ResearchState) -> dict:
     if len(sub_questions) < 3:
         sub_questions = [
             f"What is {topic} and why does it matter?",
+            f"What background and core concepts underpin {topic}?",
             f"What are the key methods, components, or data of {topic}?",
             f"What prior work and approaches exist for {topic}?",
+            f"What are the main applications and use cases of {topic}?",
             f"What are the challenges, limitations, or open problems in {topic}?",
             f"What are recent advances and the current state of {topic}?",
         ]
@@ -102,6 +111,6 @@ def outliner_node(state: ResearchState) -> dict:
         "paper_title": title,
         "keywords": keywords[:6],
         "section_plan": section_plan,
-        "sub_questions": sub_questions[:7],
+        "sub_questions": sub_questions[:9],
         "plan": f"IEEE paper on {topic}",
     }

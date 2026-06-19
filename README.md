@@ -224,11 +224,16 @@ All settings are environment variables (see `.env.example`):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `GROQ_API_KEY` | — | Groq key (required for live LLM). |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Model used by every agent. |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Main model (outliner, section writer, report agents). |
+| `GROQ_FAST_MODEL` | `llama-3.1-8b-instant` | Cheaper model for summarize/paraphrase/tables/figures. |
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible endpoint. |
-| `TAVILY_API_KEY` | — | Tavily key (optional; mock fallback otherwise). |
+| `TAVILY_API_KEY` | — | Tavily key (optional; DuckDuckGo/mock fallback otherwise). |
 | `MAX_RESEARCH_ROUNDS` | `2` | Hard cap on Critic→Searcher re-search rounds. |
 | `SEARCH_RESULTS_PER_QUERY` | `4` | Results fetched per sub-question. |
+| `LLM_MIN_INTERVAL_SECONDS` | `2.0` | Min spacing between LLM calls (throttle). |
+| `LLM_MAX_RETRIES` | `5` | Retries on HTTP 429 before giving up. |
+| `LLM_MAX_BACKOFF_SECONDS` | `90` | Max backoff per retry; larger waits ⇒ daily-cap, fail fast. |
+| `VERIFY_SSL` | `true` | Verify HTTPS via OS cert store (corporate proxies). |
 | `CORS_ORIGINS` | `http://localhost:4200,...` | Allowed frontend origins. |
 | `LOG_LEVEL` | `INFO` | Backend log level. |
 
@@ -243,18 +248,33 @@ Beyond quick reports, the app can generate a full **IEEE-format conference paper
 
 ```
 outliner → searcher → summarizer → critic ⇄ (re-search loop)
-        → section_writer → verifier → originality_check → reference_builder → assembler
+        → section_writer → verifier → plagiarism_check
+        → table_builder → figure_builder → reference_builder → assembler
 ```
 
-- **Outliner** — proposes the title, index terms, IEEE section plan, and research questions.
-- **Section Writer** — writes each section (Intro, Related Work, Methodology, Discussion,
-  Conclusion) + Abstract, grounded only in retrieved facts, citing `[S#]`.
+- **Outliner** — proposes the title, index terms, a 7–8 section IEEE plan, and 7–9 research
+  questions (targets a full 6–7 page paper).
+- **Section Writer** — writes each section (Intro, Background, Related Work, Methodology,
+  Applications, Challenges, Discussion, Conclusion) + Abstract, in 3–5 paragraphs each,
+  grounded only in retrieved facts, citing `[S#]`.
 - **Verifier** — strips any citation that doesn't map to a real source; reports verified claims.
-- **Originality check** — measures n-gram overlap of each sentence against the *actual
-  retrieved source text*, rewrites near-duplicate passages, and reports an originality score.
-  (This is a built-in similarity check, **not** a certified Turnitin/iThenticate scan.)
+- **Plagiarism check** — measures word n-gram overlap of every sentence against the *actual
+  retrieved source text*, **paraphrases** flagged passages with the LLM, then re-measures and
+  reports the pre→post originality score. (Built-in similarity check, **not** a certified
+  Turnitin/iThenticate scan.)
+- **Table builder** — synthesises one grounded comparison/summary table.
+- **Figure builder** — generates one diagram (process flow or concept map) as a PNG via
+  matplotlib.
 - **Reference builder** — numbers cited sources `[1..n]` and formats an IEEE reference list.
-- **Assembler** — renders the Markdown preview; a `python-docx` exporter produces the `.docx`.
+- **Assembler** — renders the Markdown preview; a `python-docx` exporter produces a two-column
+  IEEE `.docx` with the embedded figure and native table.
+
+**Performance / cost:** high-volume agents (summarize, paraphrase, tables, figures) use a
+cheaper fast model (`GROQ_FAST_MODEL`, default `llama-3.1-8b-instant`), and all LLM calls go
+through a **rate limiter + 429 backoff** (`LLM_MIN_INTERVAL_SECONDS`, `LLM_MAX_RETRIES`,
+`LLM_MAX_BACKOFF_SECONDS`) so generation rides under per-minute limits instead of failing.
+A per-*day* token exhaustion is detected (large suggested wait) and surfaced rather than
+blocking for tens of minutes.
 
 **API:**
 

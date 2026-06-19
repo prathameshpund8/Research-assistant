@@ -19,10 +19,12 @@ from app.agents.searcher import searcher_node
 from app.agents.state import ResearchState
 from app.agents.summarizer import summarizer_node
 from app.agents.paper.assembler import assembler_node
-from app.agents.paper.originality import originality_node
+from app.agents.paper.figures import figures_node
 from app.agents.paper.outliner import outliner_node
+from app.agents.paper.plagiarism import plagiarism_node
 from app.agents.paper.references import references_node
 from app.agents.paper.section_writer import section_writer_node
+from app.agents.paper.tables import tables_node
 from app.agents.paper.verifier import verifier_node
 
 logger = logging.getLogger(__name__)
@@ -42,7 +44,9 @@ def build_paper_graph():
     g.add_node("critic", critic_node)
     g.add_node("section_writer", section_writer_node)
     g.add_node("verifier", verifier_node)
-    g.add_node("originality_check", originality_node)
+    g.add_node("plagiarism_check", plagiarism_node)
+    g.add_node("table_builder", tables_node)
+    g.add_node("figure_builder", figures_node)
     g.add_node("reference_builder", references_node)
     g.add_node("assembler", assembler_node)
 
@@ -56,8 +60,10 @@ def build_paper_graph():
         {"searcher": "searcher", "section_writer": "section_writer"},
     )
     g.add_edge("section_writer", "verifier")
-    g.add_edge("verifier", "originality_check")
-    g.add_edge("originality_check", "reference_builder")
+    g.add_edge("verifier", "plagiarism_check")
+    g.add_edge("plagiarism_check", "table_builder")
+    g.add_edge("table_builder", "figure_builder")
+    g.add_edge("figure_builder", "reference_builder")
     g.add_edge("reference_builder", "assembler")
     g.add_edge("assembler", END)
 

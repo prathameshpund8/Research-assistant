@@ -28,10 +28,20 @@ class Settings(BaseSettings):
     # --- Groq -------------------------------------------------------------
     groq_api_key: str = Field(default="", description="Groq API key (required for live LLM).")
     groq_model: str = Field(default="llama-3.3-70b-versatile", description="Groq model id.")
+    # Cheaper/faster model for high-volume agents (summarize, paraphrase) to
+    # conserve the daily token budget.
+    groq_fast_model: str = Field(default="llama-3.1-8b-instant")
     groq_base_url: str = Field(
         default="https://api.groq.com/openai/v1",
         description="OpenAI-compatible Groq base URL.",
     )
+
+    # --- Rate limiting / retry (avoids HTTP 429 storms on free tier) -------
+    # Minimum seconds between LLM calls (throttle), and how long we'll back off
+    # on a 429 before giving up. Generation may be slow but won't fail-fast.
+    llm_min_interval_seconds: float = Field(default=2.0, ge=0.0, le=30.0)
+    llm_max_retries: int = Field(default=5, ge=0, le=10)
+    llm_max_backoff_seconds: float = Field(default=90.0, ge=5.0, le=600.0)
 
     # --- Tavily -----------------------------------------------------------
     tavily_api_key: str = Field(default="", description="Tavily search key (optional).")

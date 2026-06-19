@@ -53,6 +53,19 @@ class Reference(BaseModel):
     url: str
 
 
+class PaperTable(BaseModel):
+    number: int = 1
+    caption: str = ""
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+
+
+class PaperFigure(BaseModel):
+    number: int = 1
+    caption: str = ""
+    image_base64: str = ""  # PNG bytes, base64 (no data: prefix)
+
+
 class FlaggedPassage(BaseModel):
     section: str
     passage: str
@@ -61,10 +74,12 @@ class FlaggedPassage(BaseModel):
 
 
 class OriginalityReport(BaseModel):
-    score: float = 100.0  # 0..100, higher = more original
+    score: float = 100.0  # 0..100 post-paraphrase originality
+    pre_score: float = 100.0  # originality before paraphrasing
     flagged: list[FlaggedPassage] = Field(default_factory=list)
     rewritten: int = 0
-    method: str = "n-gram overlap vs. retrieved source text"
+    still_flagged: int = 0  # passages still above threshold after paraphrase
+    method: str = "n-gram overlap vs. retrieved source text + LLM paraphrase"
 
 
 class VerificationReport(BaseModel):
@@ -84,6 +99,8 @@ class PaperResult(BaseModel):
     abstract: str = ""
     keywords: list[str] = Field(default_factory=list)
     sections: list[PaperSection] = Field(default_factory=list)
+    tables: list[PaperTable] = Field(default_factory=list)
+    figures: list[PaperFigure] = Field(default_factory=list)
     references: list[Reference] = Field(default_factory=list)
     originality: OriginalityReport = Field(default_factory=OriginalityReport)
     verification: VerificationReport = Field(default_factory=VerificationReport)

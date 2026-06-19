@@ -66,6 +66,8 @@ class ResearchState(TypedDict, total=False):
     # Built artefacts
     abstract: str
     sections: list[dict]  # [{heading, body}]
+    tables: list[dict]  # [{number, caption, columns, rows}]
+    figures: list[dict]  # [{number, caption, image_base64}]
     references: list[dict]  # [{number, source_id, text, url}]
     originality: dict
     verification: dict
