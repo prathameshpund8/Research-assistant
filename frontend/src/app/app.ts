@@ -96,7 +96,7 @@ export class App implements OnDestroy {
     }
   }
 
-  private loadPaper(paperId: string): void {
+  private loadPaper(paperId: string, attempt = 0): void {
     this.research.getPaper(paperId).subscribe({
       next: (res) => {
         this.paper = res;
@@ -109,7 +109,15 @@ export class App implements OnDestroy {
           });
         }
       },
-      error: () => this.fail('Could not load the generated paper.'),
+      // The backend may briefly 404 if it restarted just as the run finished
+      // (e.g. the dev --reload watcher). Retry a few times before giving up.
+      error: () => {
+        if (attempt < 4) {
+          setTimeout(() => this.loadPaper(paperId, attempt + 1), 1500);
+        } else {
+          this.fail('Could not load the generated paper.');
+        }
+      },
     });
   }
 

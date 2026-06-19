@@ -10,6 +10,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 from app.agents.paper.graph import paper_graph
@@ -28,6 +29,10 @@ from app.models.paper_schemas import (
 from app.models.schemas import AgentName, EventStatus, ProgressEvent
 
 logger = logging.getLogger(__name__)
+
+# Completed papers are written here so they survive a server restart (e.g. the
+# uvicorn --reload watcher) — the in-memory store alone would lose them.
+_CACHE_DIR = Path(__file__).resolve().parents[2] / ".paper_cache"
 
 
 @dataclass
@@ -53,7 +58,43 @@ class PaperJobManager:
         self._jobs: dict[str, PaperJob] = {}
 
     def get(self, job_id: str) -> Optional[PaperJob]:
-        return self._jobs.get(job_id)
+        job = self._jobs.get(job_id)
+        if job is not None:
+            return job
+        # Not in memory (e.g. after a restart) — try the on-disk cache.
+        return self._load(job_id)
+
+    def _persist(self, job: PaperJob) -> None:
+        if job.result is None:
+            return
+        try:
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            (_CACHE_DIR / f"{job.id}.json").write_text(
+                job.result.model_dump_json(), encoding="utf-8"
+            )
+        except Exception:  # persistence is best-effort
+            logger.exception("Failed to persist paper %s.", job.id)
+
+    def _load(self, job_id: str) -> Optional[PaperJob]:
+        path = _CACHE_DIR / f"{job_id}.json"
+        if not path.exists():
+            return None
+        try:
+            result = PaperResult.model_validate_json(path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.exception("Failed to load cached paper %s.", job_id)
+            return None
+        job = PaperJob(
+            id=job_id,
+            topic=result.topic,
+            details=result.details,
+            authors=[a.model_dump() for a in result.authors],
+            status=result.status,
+            result=result,
+            finished=True,
+        )
+        self._jobs[job_id] = job  # re-cache in memory
+        return job
 
     def start(self, topic: str, details: str, authors: list[dict]) -> PaperJob:
         job = PaperJob(id=uuid.uuid4().hex[:12], topic=topic, details=details, authors=authors)
@@ -111,6 +152,7 @@ class PaperJobManager:
             )
         finally:
             job.finished = True
+            self._persist(job)  # survive restarts
             job.signal().set()
 
     def _append(self, job: PaperJob, event: ProgressEvent) -> None:

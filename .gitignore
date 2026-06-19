@@ -10,6 +10,7 @@ __pycache__/
 .pytest_cache/
 backend/_uvicorn*.log
 backend/_smoke_report.md
+backend/.paper_cache/
 
 # Node / Angular
 frontend/node_modules/
