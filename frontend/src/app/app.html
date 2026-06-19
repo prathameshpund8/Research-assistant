@@ -8,13 +8,33 @@
   </header>
 
   <main class="container">
-    <app-research-input [running]="running" (research)="onResearch($event)"></app-research-input>
+    <div class="mode-toggle">
+      <button [class.active]="mode === 'report'" [disabled]="running" (click)="setMode('report')">
+        📄 Quick Report
+      </button>
+      <button [class.active]="mode === 'paper'" [disabled]="running" (click)="setMode('paper')">
+        🎓 IEEE Paper
+      </button>
+    </div>
+
+    <app-research-input
+      *ngIf="mode === 'report'"
+      [running]="running"
+      (research)="onResearch($event)"
+    ></app-research-input>
+
+    <app-paper-input
+      *ngIf="mode === 'paper'"
+      [running]="running"
+      (generate)="onGeneratePaper($event)"
+    ></app-paper-input>
 
     <div class="error" *ngIf="errorMessage">
       <strong>⚠ </strong>{{ errorMessage }}
     </div>
 
-    <section class="workspace" *ngIf="hasStarted">
+    <!-- Report mode: timeline + report + sources sidebar -->
+    <section class="workspace" *ngIf="hasStarted && mode === 'report'">
       <div class="left">
         <h2 class="section-title">
           Agent activity
@@ -31,6 +51,20 @@
       <aside class="right">
         <app-source-list [sources]="result?.sources || []"></app-source-list>
       </aside>
+    </section>
+
+    <!-- Paper mode: timeline then full-width paper preview -->
+    <section class="paper-workspace" *ngIf="hasStarted && mode === 'paper'">
+      <h2 class="section-title">
+        Agent activity
+        <span class="q" *ngIf="query">— "{{ query }}"</span>
+      </h2>
+      <app-agent-timeline [items]="timeline"></app-agent-timeline>
+
+      <ng-container *ngIf="paper && paper.status === 'completed'">
+        <h2 class="section-title">Generated IEEE Paper</h2>
+        <app-paper-view [paper]="paper" [docxUrl]="paperDocxUrl"></app-paper-view>
+      </ng-container>
     </section>
 
     <section class="placeholder" *ngIf="!hasStarted">

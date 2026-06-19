@@ -56,6 +56,21 @@ class ResearchState(TypedDict, total=False):
     # --- writer -----------------------------------------------------------
     final_report: str
 
+    # --- paper pipeline (IEEE paper generator) ----------------------------
+    # Inputs / outline
+    details: str
+    authors: list[dict]
+    paper_title: str
+    keywords: list[str]
+    section_plan: list[dict]  # [{heading, guidance}]
+    # Built artefacts
+    abstract: str
+    sections: list[dict]  # [{heading, body}]
+    references: list[dict]  # [{number, source_id, text, url}]
+    originality: dict
+    verification: dict
+    paper_markdown: str
+
     # --- orchestration ----------------------------------------------------
     # Callback used by nodes to emit SSE progress events. Not serialised into
     # the final result; supplied at invocation time.

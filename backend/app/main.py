@@ -66,8 +66,10 @@ def health() -> HealthResponse:
     )
 
 
-# --- Research API routes (added in Phase 2+) -------------------------------
+# --- Research + paper API routes -------------------------------------------
 from app.api.routes import router as research_router  # noqa: E402
+from app.api.paper_routes import router as paper_router  # noqa: E402
 
 app.include_router(research_router, prefix="/api", tags=["research"])
-logger.info("Research routes mounted at /api")
+app.include_router(paper_router, prefix="/api", tags=["paper"])
+logger.info("Research + paper routes mounted at /api")

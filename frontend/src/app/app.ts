@@ -15,6 +15,9 @@ import { ResearchInputComponent } from './components/research-input/research-inp
 import { AgentTimelineComponent } from './components/agent-timeline/agent-timeline.component';
 import { ReportViewComponent } from './components/report-view/report-view.component';
 import { SourceListComponent } from './components/source-list/source-list.component';
+import { PaperInputComponent, PaperRequestInput } from './components/paper-input/paper-input.component';
+import { PaperViewComponent } from './components/paper-view/paper-view.component';
+import { PaperResult } from './models/paper.model';
 
 @Component({
   selector: 'app-root',
@@ -25,6 +28,8 @@ import { SourceListComponent } from './components/source-list/source-list.compon
     AgentTimelineComponent,
     ReportViewComponent,
     SourceListComponent,
+    PaperInputComponent,
+    PaperViewComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -32,11 +37,14 @@ import { SourceListComponent } from './components/source-list/source-list.compon
 export class App implements OnDestroy {
   private readonly research = inject(ResearchService);
 
+  mode: 'report' | 'paper' = 'report';
   running = false;
   errorMessage = '';
   query = '';
   timeline: AgentTimelineItem[] = this.freshTimeline();
   result: ResearchResult | null = null;
+  paper: PaperResult | null = null;
+  paperDocxUrl = '';
 
   private disposeStream: (() => void) | null = null;
 
@@ -59,6 +67,49 @@ export class App implements OnDestroy {
       onEvent: (ev) => this.applyEvent(ev),
       onDone: () => this.loadResult(researchId),
       onError: (msg) => this.fail(msg),
+    });
+  }
+
+  setMode(mode: 'report' | 'paper'): void {
+    if (this.running || this.mode === mode) return;
+    this.mode = mode;
+    this.reset();
+    this.paper = null;
+  }
+
+  /** Kick off an IEEE paper generation run. */
+  async onGeneratePaper(req: PaperRequestInput): Promise<void> {
+    this.reset();
+    this.paper = null;
+    this.query = req.topic;
+    this.running = true;
+    try {
+      const { paper_id } = await this.research.startPaper(req.topic, req.details, req.authors);
+      this.paperDocxUrl = this.research.paperDocxUrl(paper_id);
+      this.disposeStream = this.research.streamPaperProgress(paper_id, {
+        onEvent: (ev) => this.applyEvent(ev),
+        onDone: () => this.loadPaper(paper_id),
+        onError: (msg) => this.fail(msg),
+      });
+    } catch {
+      this.fail('Could not start paper generation. Is the backend running?');
+    }
+  }
+
+  private loadPaper(paperId: string): void {
+    this.research.getPaper(paperId).subscribe({
+      next: (res) => {
+        this.paper = res;
+        this.running = false;
+        if (res.status === 'error') {
+          this.errorMessage = res.error || 'Paper generation failed.';
+        } else {
+          this.timeline.forEach((t) => {
+            if (t.status === 'active' || t.status === 'idle') t.status = 'done';
+          });
+        }
+      },
+      error: () => this.fail('Could not load the generated paper.'),
     });
   }
 
@@ -131,7 +182,7 @@ export class App implements OnDestroy {
   }
 
   get hasStarted(): boolean {
-    return this.running || this.result !== null || this.errorMessage !== '';
+    return this.running || this.result !== null || this.paper !== null || this.errorMessage !== '';
   }
 
   ngOnDestroy(): void {

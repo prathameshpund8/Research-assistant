@@ -4,6 +4,7 @@ import { Observable, firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { ProgressEvent, ResearchResult } from '../models/research.model';
+import { Author, PaperResult } from '../models/paper.model';
 
 /** Callbacks for a live research stream. */
 export interface ResearchStreamHandlers {
@@ -34,13 +35,36 @@ export class ResearchService {
     return this.http.get<ResearchResult>(`${this.base}/api/research/${researchId}`);
   }
 
+  // --- IEEE paper endpoints -------------------------------------------
+  startPaper(topic: string, details: string, authors: Author[]): Promise<{ paper_id: string }> {
+    return firstValueFrom(
+      this.http.post<{ paper_id: string }>(`${this.base}/api/paper`, { topic, details, authors }),
+    );
+  }
+
+  getPaper(paperId: string): Observable<PaperResult> {
+    return this.http.get<PaperResult>(`${this.base}/api/paper/${paperId}`);
+  }
+
+  /** URL the browser can hit directly to download the .docx. */
+  paperDocxUrl(paperId: string): string {
+    return `${this.base}/api/paper/${paperId}/docx`;
+  }
+
+  streamPaperProgress(paperId: string, handlers: ResearchStreamHandlers): () => void {
+    return this.openStream(`${this.base}/api/paper/${paperId}/stream`, handlers);
+  }
+
   /**
    * Open an SSE connection for live agent progress. Returns a disposer that
    * closes the stream. EventSource callbacks run outside Angular, so we hop
    * back into the zone to keep change detection working.
    */
   streamProgress(researchId: string, handlers: ResearchStreamHandlers): () => void {
-    const url = `${this.base}/api/research/${researchId}/stream`;
+    return this.openStream(`${this.base}/api/research/${researchId}/stream`, handlers);
+  }
+
+  private openStream(url: string, handlers: ResearchStreamHandlers): () => void {
     const source = new EventSource(url);
 
     source.addEventListener('progress', (ev: MessageEvent) => {

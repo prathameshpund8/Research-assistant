@@ -234,6 +234,47 @@ All settings are environment variables (see `.env.example`):
 
 ---
 
+## IEEE paper generator
+
+Beyond quick reports, the app can generate a full **IEEE-format conference paper**
+(switch to the *🎓 IEEE Paper* mode in the UI, or use the API below).
+
+**Pipeline (extra agents on top of the research front-half):**
+
+```
+outliner → searcher → summarizer → critic ⇄ (re-search loop)
+        → section_writer → verifier → originality_check → reference_builder → assembler
+```
+
+- **Outliner** — proposes the title, index terms, IEEE section plan, and research questions.
+- **Section Writer** — writes each section (Intro, Related Work, Methodology, Discussion,
+  Conclusion) + Abstract, grounded only in retrieved facts, citing `[S#]`.
+- **Verifier** — strips any citation that doesn't map to a real source; reports verified claims.
+- **Originality check** — measures n-gram overlap of each sentence against the *actual
+  retrieved source text*, rewrites near-duplicate passages, and reports an originality score.
+  (This is a built-in similarity check, **not** a certified Turnitin/iThenticate scan.)
+- **Reference builder** — numbers cited sources `[1..n]` and formats an IEEE reference list.
+- **Assembler** — renders the Markdown preview; a `python-docx` exporter produces the `.docx`.
+
+**API:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/paper` | `{ topic, details?, authors? }` → `{ paper_id }`. |
+| `GET`  | `/api/paper/{id}/stream` | SSE progress (same event shape as research). |
+| `GET`  | `/api/paper/{id}` | Structured paper: title, abstract, sections, references, originality + verification reports. |
+| `GET`  | `/api/paper/{id}/docx` | Download the IEEE-formatted Word document. |
+
+> **Honest scope:** this produces a well-structured, fully-cited IEEE **draft** with
+> multi-agent fact-checking and an originality pass. It is *not* a guaranteed-publishable
+> original-research paper — an LLM working from web search can't run real experiments or
+> certify novelty, and most venues require disclosure of AI assistance. Treat the output as
+> a strong starting draft to refine, verify, and extend with your own contribution.
+>
+> **Token note:** the paper pipeline makes many LLM calls. On Groq's free tier (~100K
+> tokens/day) one or two papers can exhaust the daily budget (you'll see HTTP 429 and the
+> agents fall back to degraded output). Use a paid Groq tier or wait for the daily reset.
+
 ## Troubleshooting
 
 **Report says "Generated without an LLM" / all sources are `[MOCK]`.**

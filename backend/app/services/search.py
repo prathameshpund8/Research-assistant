@@ -27,6 +27,26 @@ class RawResult:
     score: float = 0.0
 
 
+# Hosts / URL fragments that indicate ads, trackers, or non-citable content.
+_JUNK_URL_FRAGMENTS = (
+    "bing.com/aclick",
+    "duckduckgo.com/y.js",
+    "/aclk?",
+    "googleadservices",
+    "doubleclick.net",
+    "utm_campaign",
+    "/sponsored",
+)
+
+
+def is_quality_url(url: str) -> bool:
+    """Reject obvious ad/tracking redirects so they never become sources."""
+    low = url.lower()
+    if not low.startswith(("http://", "https://")):
+        return False
+    return not any(frag in low for frag in _JUNK_URL_FRAGMENTS)
+
+
 class SearchService:
     """Web search facade with tiered providers.
 
@@ -111,14 +131,21 @@ class SearchService:
         return results
 
     def _search_duckduckgo(self, query: str, k: int) -> list[RawResult]:
-        """Keyless real web search via DuckDuckGo (ddgs package)."""
+        """Keyless real web search via DuckDuckGo (ddgs package).
+
+        Over-fetches then filters out ad/tracking redirects and low-quality
+        hosts so junk URLs (e.g. ``bing.com/aclick`` ads) never become sources.
+        """
         from ddgs import DDGS
 
         results: list[RawResult] = []
         with DDGS() as ddgs_client:
-            for rank, item in enumerate(ddgs_client.text(query, max_results=k)):
+            # Over-fetch so filtering still leaves ~k clean results.
+            raw = ddgs_client.text(query, max_results=k * 3)
+            rank = 0
+            for item in raw:
                 url = item.get("href") or item.get("url") or ""
-                if not url:
+                if not url or not is_quality_url(url):
                     continue
                 results.append(
                     RawResult(
@@ -129,6 +156,9 @@ class SearchService:
                         score=round(max(0.0, 1.0 - rank * 0.1), 2),
                     )
                 )
+                rank += 1
+                if rank >= k:
+                    break
         return results
 
     def _search_mock(self, query: str, k: int) -> list[RawResult]:

@@ -23,3 +23,6 @@ httpx==0.28.1
 
 # --- TLS: trust the OS certificate store (corporate HTTPS-inspection proxies) ---
 truststore==0.10.1
+
+# --- IEEE paper export (.docx) ---
+python-docx==1.1.2
