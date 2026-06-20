@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents._util import emit
 from app.agents.state import ResearchState
-from app.services.llm import get_llm
+from app.services.llm import get_fast_llm, get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -66,14 +66,13 @@ def section_writer_node(state: ResearchState) -> dict:
 
     emit(state, "writer", "started", f"Drafting {len(plan)} sections from {len(facts)} facts.")
 
-    try:
-        llm = get_llm(temperature=0.35)
-        llm_ok = True
-    except Exception as exc:
-        logger.warning("Section writer LLM unavailable (%s).", exc)
-        emit(state, "writer", "progress", f"LLM unavailable ({exc}); writing minimal sections.")
-        llm = None
-        llm_ok = False
+    # Tiered models: prefer the strong 70B model, but fall back to the cheaper
+    # fast model when the 70B is rate-limited/exhausted (its daily budget is
+    # separate). This keeps sections as real multi-paragraph prose instead of
+    # dropping to the one-line stub.
+    primary = _try_build(get_llm, 0.35)
+    fast = _try_build(get_fast_llm, 0.4)
+    used_fast = False
 
     sections: list[dict] = []
     for i, spec in enumerate(plan):
@@ -82,32 +81,54 @@ def section_writer_node(state: ResearchState) -> dict:
         # Give each section a different window of facts (less repetition + a
         # smaller prompt that stays under the per-minute token limit).
         section_facts = _facts_block(facts, start=i * _MAX_FACTS_PER_SECTION)
-        if llm_ok:
-            try:
-                msgs = [
-                    SystemMessage(content=SECTION_SYSTEM_PROMPT),
-                    HumanMessage(
-                        content=SECTION_USER_TEMPLATE.format(
-                            title=title,
-                            heading=heading,
-                            guidance=spec.get("guidance", ""),
-                            facts=section_facts,
-                        )
-                    ),
-                ]
-                body = llm.invoke(msgs).content.strip()
-            except Exception:
-                logger.exception("Failed writing section %s.", heading)
-                body = _fallback_section(heading, facts)
-        else:
+        msgs = [
+            SystemMessage(content=SECTION_SYSTEM_PROMPT),
+            HumanMessage(
+                content=SECTION_USER_TEMPLATE.format(
+                    title=title,
+                    heading=heading,
+                    guidance=spec.get("guidance", ""),
+                    facts=section_facts,
+                )
+            ),
+        ]
+        body, from_fast = _write(primary, fast, msgs)
+        if body is None:
             body = _fallback_section(heading, facts)
+        used_fast = used_fast or from_fast
         sections.append({"heading": heading, "body": body})
 
+    if used_fast:
+        emit(state, "writer", "progress", "Primary model rate-limited; used the fast model for some sections.")
+
     # Abstract from the finished sections.
-    abstract = _write_abstract(llm if llm_ok else None, title, sections)
+    abstract = _write_abstract(primary, fast, title, sections)
 
     emit(state, "writer", "completed", f"Drafted {len(sections)} sections and the abstract.")
     return {"sections": sections, "abstract": abstract}
+
+
+def _try_build(factory, temperature: float):
+    try:
+        return factory(temperature=temperature)
+    except Exception as exc:  # no key configured
+        logger.warning("LLM unavailable (%s).", exc)
+        return None
+
+
+def _write(primary, fast, msgs) -> tuple[str | None, bool]:
+    """Try the primary model, then the fast model. Returns (text, used_fast)."""
+    for llm, is_fast in ((primary, False), (fast, True)):
+        if llm is None:
+            continue
+        try:
+            text = llm.invoke(msgs).content.strip()
+            if text:
+                return text, is_fast
+        except Exception as exc:
+            logger.warning("%s model failed for a section (%s); trying next.",
+                           "fast" if is_fast else "primary", str(exc)[:80])
+    return None, False
 
 
 def _facts_block(facts: list[dict], start: int = 0) -> str:
@@ -120,23 +141,16 @@ def _facts_block(facts: list[dict], start: int = 0) -> str:
     return "\n".join(f"- ({f['source_id']}) {f['text'][:240]}" for f in window)
 
 
-def _write_abstract(llm, title: str, sections: list[dict]) -> str:
+def _write_abstract(primary, fast, title: str, sections: list[dict]) -> str:
     summaries = "\n".join(f"{s['heading']}: {s['body'][:240]}" for s in sections)
-    if llm is None:
-        return (
-            f"This paper examines {title}. It surveys the relevant literature, "
-            "describes the approach, and discusses the main findings and their "
-            "implications based on the collected sources."
-        )
-    try:
-        msgs = [
-            SystemMessage(content=ABSTRACT_SYSTEM_PROMPT),
-            HumanMessage(content=ABSTRACT_USER_TEMPLATE.format(title=title, summaries=summaries)),
-        ]
-        return llm.invoke(msgs).content.strip()
-    except Exception:
-        logger.exception("Abstract generation failed; using fallback.")
-        return f"This paper examines {title} based on a review of collected sources."
+    msgs = [
+        SystemMessage(content=ABSTRACT_SYSTEM_PROMPT),
+        HumanMessage(content=ABSTRACT_USER_TEMPLATE.format(title=title, summaries=summaries)),
+    ]
+    text, _ = _write(primary, fast, msgs)
+    if text:
+        return text
+    return f"This paper examines {title} based on a review of the collected sources."
 
 
 def _fallback_section(heading: str, facts: list[dict]) -> str:
