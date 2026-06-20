@@ -75,16 +75,30 @@ def tables_node(state: ResearchState) -> dict:
 def _clean_table(spec: dict, number: int, topic: str) -> dict | None:
     if not isinstance(spec, dict):
         return None
-    cols = [str(c) for c in spec.get("columns", []) if str(c).strip()]
-    rows = [[str(c) for c in row] for row in spec.get("rows", []) if isinstance(row, list) and row]
-    if not cols or not rows:
+    cols = [str(c).strip() for c in spec.get("columns", []) if str(c).strip()]
+    if not cols:
         return None
-    rows = [(r + [""] * len(cols))[: len(cols)] for r in rows]
+
+    cleaned_rows: list[list[str]] = []
+    for row in spec.get("rows", []):
+        if not isinstance(row, list):
+            continue
+        cells = [str(c).strip() for c in row]
+        # Normalise to the column count.
+        cells = (cells + [""] * len(cols))[: len(cols)]
+        non_empty = sum(1 for c in cells if c)
+        # Drop rows that are empty or mostly blank (e.g. a stray "2026" row).
+        if non_empty < max(2, (len(cols) + 1) // 2):
+            continue
+        cleaned_rows.append(cells)
+
+    if not cleaned_rows:
+        return None
     return {
         "number": number,
         "caption": (spec.get("caption") or f"Summary of {topic}").strip(),
         "columns": cols,
-        "rows": rows[:6],
+        "rows": cleaned_rows[:6],
     }
 
 

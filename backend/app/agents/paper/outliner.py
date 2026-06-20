@@ -22,39 +22,44 @@ logger = logging.getLogger(__name__)
 
 # === EDITABLE PROMPT =======================================================
 OUTLINER_SYSTEM_PROMPT = """You are the Outliner for a full-length (6-7 page)
-IEEE conference paper. Given a research topic and optional scope details,
-produce a JSON plan with 7-8 substantial sections.
+IEEE-format **literature review / survey** paper (NOT an original empirical
+study). Given a topic and optional scope, produce a JSON plan with 7-8 sections
+suited to a survey that synthesises existing published sources.
+
+IMPORTANT: This is a review of existing literature. Do NOT include sections that
+imply original experiments — no "Data Collection", "Experiments", or "Statistical
+Analysis". Use review-style sections instead.
 
 Return STRICT JSON only:
 {
-  "title": "<concise, specific, publishable paper title (Title Case)>",
+  "title": "<survey/review title; you may start with 'A Review of' or 'A Survey of', Title Case>",
   "keywords": ["<4-6 index terms>"],
   "sections": [
-    {"heading": "Introduction", "guidance": "<what this section must cover>"},
+    {"heading": "Introduction", "guidance": "<motivation, scope, why a review matters>"},
     {"heading": "Background", "guidance": "..."},
-    {"heading": "Related Work", "guidance": "..."},
-    {"heading": "<Methodology/Approach heading>", "guidance": "..."},
-    {"heading": "<Applications or Results heading>", "guidance": "..."},
+    {"heading": "Review Methodology", "guidance": "scope of the review and how the literature is organised (NOT data collection)"},
+    {"heading": "<Thematic heading, e.g. Approaches/Applications>", "guidance": "..."},
+    {"heading": "<Thematic heading, e.g. Findings Across the Literature>", "guidance": "..."},
     {"heading": "Challenges and Limitations", "guidance": "..."},
     {"heading": "Discussion and Future Directions", "guidance": "..."},
     {"heading": "Conclusion", "guidance": "..."}
   ],
   "sub_questions": ["<7-9 research questions to investigate the topic deeply>"]
 }
-Keep headings standard for an IEEE paper. No text outside the JSON."""
+No text outside the JSON."""
 
 OUTLINER_USER_TEMPLATE = "Topic: {topic}\n\nScope / details (may be empty):\n{details}"
 # ===========================================================================
 
 DEFAULT_SECTIONS = [
-    {"heading": "Introduction", "guidance": "Motivate the topic, state the problem and contributions."},
+    {"heading": "Introduction", "guidance": "Motivate the topic and the value of a review; state scope."},
     {"heading": "Background", "guidance": "Define core concepts and necessary preliminaries."},
-    {"heading": "Related Work", "guidance": "Survey prior work and position this paper."},
-    {"heading": "Methodology", "guidance": "Describe the approach, methods, or framework."},
-    {"heading": "Applications", "guidance": "Describe use cases and where the topic is applied."},
-    {"heading": "Challenges and Limitations", "guidance": "Discuss open problems, risks, trade-offs."},
-    {"heading": "Discussion and Future Directions", "guidance": "Synthesise implications and future work."},
-    {"heading": "Conclusion", "guidance": "Summarise contributions and outlook."},
+    {"heading": "Review Methodology", "guidance": "Describe the scope of the review and how the literature is organised (not data collection)."},
+    {"heading": "Approaches and Applications", "guidance": "Survey the main approaches, methods, and use cases reported in the literature."},
+    {"heading": "Findings Across the Literature", "guidance": "Synthesise what published studies report; compare and contrast results."},
+    {"heading": "Challenges and Limitations", "guidance": "Discuss open problems, risks, trade-offs noted in the literature."},
+    {"heading": "Discussion and Future Directions", "guidance": "Synthesise implications and future research directions."},
+    {"heading": "Conclusion", "guidance": "Summarise the state of the literature and outlook."},
 ]
 
 
@@ -75,7 +80,7 @@ def outliner_node(state: ResearchState) -> dict:
         logger.warning("Outliner LLM failed (%s); using default outline.", exc)
         emit(state, "planner", "progress", f"LLM unavailable ({exc}); using a default IEEE outline.")
 
-    title = (parsed.get("title") or f"A Study on {topic}").strip()
+    title = (parsed.get("title") or f"A Review of {topic}").strip()
     keywords = [k.strip() for k in parsed.get("keywords", []) if isinstance(k, str) and k.strip()]
     if not keywords:
         keywords = [topic.lower(), "survey", "analysis"]

@@ -38,13 +38,49 @@ _JUNK_URL_FRAGMENTS = (
     "/sponsored",
 )
 
+# Low-credibility sources for an academic paper: contract-cheating / essay mills
+# and assignment-writing services. Specific brands/patterns to avoid blocking
+# legitimate research URLs that merely contain the word "essay".
+_BLOCKED_FRAGMENTS = (
+    "ukessays", "essaypro", "essayshark", "essaywriter", "myessay",
+    "bestessay", "essaytyper", "edubirdie", "paperhelp", "writemypaper",
+    "paperwriting", "quickassignmenthub", "assignmenthub", "assignmenthelp",
+    "myassignment", "homeworkhelp", "courseworkhelp", "studymoose",
+    "coursehero", "studocu", "chegg.com", "gradesfixer", "bartleby.com",
+    "scribbr.com/essay",
+)
+
+# Substrings that indicate a high-credibility scholarly source (ranked first).
+_SCHOLARLY_HINTS = (
+    ".edu", ".gov", ".ac.", "doi.org", "arxiv.org", "ieee.org", "ieeexplore",
+    "springer", "link.springer", "sciencedirect", "mdpi.com", "nature.com",
+    "ncbi.nlm.nih.gov", "/pmc/", "pmc.ncbi", "frontiersin.org", "wiley.com",
+    "onlinelibrary.wiley", "acm.org", "researchgate.net", "eric.ed.gov",
+    "semanticscholar", "tandfonline", "sagepub", "cambridge.org", "oup.com",
+    "jstor.org", "plos.org", "biomedcentral", "scopus",
+)
+
 
 def is_quality_url(url: str) -> bool:
-    """Reject obvious ad/tracking redirects so they never become sources."""
+    """Reject ad/tracking redirects and known low-credibility/essay-mill hosts."""
     low = url.lower()
     if not low.startswith(("http://", "https://")):
         return False
-    return not any(frag in low for frag in _JUNK_URL_FRAGMENTS)
+    if any(frag in low for frag in _JUNK_URL_FRAGMENTS):
+        return False
+    if any(frag in low for frag in _BLOCKED_FRAGMENTS):
+        return False
+    return True
+
+
+def credibility(url: str) -> int:
+    """Heuristic source credibility for ranking (higher = more scholarly)."""
+    low = url.lower()
+    if any(h in low for h in _SCHOLARLY_HINTS):
+        return 3
+    if low.split("/")[2:3] and low.split("/")[2].endswith((".org", ".edu", ".gov")):
+        return 2
+    return 1
 
 
 class SearchService:
@@ -133,33 +169,33 @@ class SearchService:
     def _search_duckduckgo(self, query: str, k: int) -> list[RawResult]:
         """Keyless real web search via DuckDuckGo (ddgs package).
 
-        Over-fetches then filters out ad/tracking redirects and low-quality
-        hosts so junk URLs (e.g. ``bing.com/aclick`` ads) never become sources.
+        Over-fetches, drops ad/tracking redirects and essay-mill/junk hosts, then
+        ranks scholarly sources first so the paper cites credible references.
         """
         from ddgs import DDGS
 
-        results: list[RawResult] = []
+        candidates: list[RawResult] = []
         with DDGS() as ddgs_client:
-            # Over-fetch so filtering still leaves ~k clean results.
-            raw = ddgs_client.text(query, max_results=k * 3)
-            rank = 0
-            for item in raw:
+            # Over-fetch generously so filtering + scholarly ranking has choice.
+            raw = ddgs_client.text(query, max_results=max(k * 4, 12))
+            for order, item in enumerate(raw):
                 url = item.get("href") or item.get("url") or ""
                 if not url or not is_quality_url(url):
                     continue
-                results.append(
+                # Score = credibility tier first, then original result order.
+                cred = credibility(url)
+                candidates.append(
                     RawResult(
                         title=item.get("title") or url,
                         url=url,
                         snippet=(item.get("body") or "")[:600],
-                        # No provider score; approximate by result ordering.
-                        score=round(max(0.0, 1.0 - rank * 0.1), 2),
+                        score=round(cred + max(0.0, 1.0 - order * 0.05), 2),
                     )
                 )
-                rank += 1
-                if rank >= k:
-                    break
-        return results
+
+        # Prefer higher credibility, then earlier result order (encoded in score).
+        candidates.sort(key=lambda r: r.score, reverse=True)
+        return candidates[:k]
 
     def _search_mock(self, query: str, k: int) -> list[RawResult]:
         """Deterministic, clearly-labelled placeholder results.

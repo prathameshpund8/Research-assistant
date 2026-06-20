@@ -20,8 +20,17 @@ logger = logging.getLogger(__name__)
 
 # === EDITABLE PROMPTS ======================================================
 SECTION_SYSTEM_PROMPT = """You are writing one section of a full-length (6-7 page)
-IEEE conference paper. Use ONLY the provided facts; do not invent facts, numbers,
-or citations.
+IEEE-format **literature review / survey** paper. Use ONLY the provided facts; do
+not invent facts, numbers, or citations.
+
+CRITICAL — this is a REVIEW of existing literature, not an original study:
+- Do NOT claim that "this paper/study" conducted experiments, collected data,
+  surveyed participants, built a system, or produced original results.
+- Do NOT write phrases like "the proposed approach", "our method", "we collected",
+  "the study's results indicate". Instead attribute everything to the sources:
+  "studies report…", "the literature indicates…", "[S3] finds…", "prior work shows…".
+- For a "Review Methodology" section, describe the scope of the review and how the
+  literature is organised — NOT data collection or statistical analysis.
 
 Rules:
 - Write formal, academic IEEE prose (third person, present tense where natural).
@@ -44,10 +53,13 @@ SECTION_USER_TEMPLATE = (
     "Write the section body now (Markdown, with [S#] citations)."
 )
 
-ABSTRACT_SYSTEM_PROMPT = """You write the Abstract of an IEEE conference paper.
-Write a single paragraph (120-200 words): context, problem, approach, key
-findings, and significance. Formal tone. No citations in the abstract. Output
-only the abstract text."""
+ABSTRACT_SYSTEM_PROMPT = """You write the Abstract of an IEEE-format literature
+review / survey paper. Write a single paragraph (120-200 words): the topic and
+why it matters, the scope of the review, the main themes/findings reported across
+the literature, and the open challenges. This is a REVIEW — do NOT claim original
+experiments, data collection, or "our study's findings"; frame it as a synthesis
+of existing work (e.g. "This paper reviews…", "The literature suggests…"). Formal
+tone. No citations in the abstract. Output only the abstract text."""
 
 ABSTRACT_USER_TEMPLATE = "Paper title: {title}\n\nSection summaries:\n{summaries}"
 # ===========================================================================
